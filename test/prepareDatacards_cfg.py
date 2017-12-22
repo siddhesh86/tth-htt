@@ -5,7 +5,7 @@ import os
 process = cms.PSet()
 
 process.fwliteInput = cms.PSet(
-    fileNames = cms.vstring()
+    fileNames = cms.vstring("/hdfs/local/karmakar/ttHAnalysis/2016/2017Oct29_Loose/histograms/2l_2tau/histograms_harvested_stage2_2l_2tau_disabled_disabled_Fakeable_wFakeRateWeights_OS.root")
 )
 
 process.fwliteOutput = cms.PSet(
