@@ -7,7 +7,7 @@ process = cms.PSet()
 process.fwliteInput = cms.PSet(
     fileNames = cms.vstring(''),
     maxEvents = cms.int32(-1),
-    outputEvery = cms.uint32(100000)
+    outputEvery = cms.uint32(10000)
 )
 
 process.fwliteOutput = cms.PSet(
@@ -91,8 +91,35 @@ process.analyze_hadTopTagger = cms.PSet(
     selEventsFileName_input = cms.string(''),
     ##selEventsFileName_input = cms.string('/home/veelken/CMSSW_9_4_4/src/tthAnalysis/HiggsToTauTau/test/selEvents_hadTopTagger_gen.txt'),
     ##selEventsFileName_output = cms.string('')
-    selEventsFileName_output = cms.string('/home/acaan/CMSSW_9_4_4/src/tthAnalysis/HiggsToTauTau/test/selEvents_hadTopTagger.txt'),
+    selEventsFileName_output = cms.string('/home/ssawant/VHbbNtuples_9_4_x/CMSSW_9_4_4/src/tthAnalysis/HiggsToTauTau/test/selEvents_hadTopTagger.txt'),
 
     selectBDT = cms.bool(True),
     isDEBUG = cms.bool(False),
 )
+
+
+
+#added by Siddhesh
+#inputFilePath = "/hdfs/local/karl/ttHNtupleProduction/2017/2018Apr04_woPresel_nom_all/ntuples/ttHJetToNonbb_M125_amcatnlo/0000/"
+inputFilePath = "/hdfs/local/karl/ttHNtupleProduction/2017/2018Apr08_woPresel_nonNom_sync/ntuples/ttHJetToNonbb_M125_amcatnlo/0000/"
+maxInputFiles = 50
+#zombie_files = [ "tree_110.root", ]
+#zombie_files = [ "tree_110.root", "tree_168.root"]
+zombie_files = [ ]
+import os
+def getInputFiles(inputFilePath):
+    inputFiles = []
+    files_and_subdirectories = os.listdir(inputFilePath)
+    for file_or_subdirectory in files_and_subdirectories:
+        if file_or_subdirectory in zombie_files:
+            continue
+        file_or_subdirectory = os.path.join(inputFilePath, file_or_subdirectory)
+        if os.path.isfile(file_or_subdirectory):
+            if file_or_subdirectory.endswith(".root"):
+                inputFiles.append(file_or_subdirectory)
+        if os.path.isdir(file_or_subdirectory):
+            inputFiles.extend(getInputFiles(file_or_subdirectory))
+    return inputFiles
+inputFiles = getInputFiles(inputFilePath)
+process.fwliteInput.fileNames = cms.vstring(inputFiles[0:maxInputFiles])
+print "inputFiles = ", process.fwliteInput.fileNames
