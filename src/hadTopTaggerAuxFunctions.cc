@@ -321,8 +321,8 @@ calRank(std::vector<const RecoJet*>& selJetsIt) {
     sort(indx.begin(),indx.end(),[&btag_disc](int i1, int i2){return btag_disc[i1]>btag_disc[i2];});
     //return ranking
     for(size_t iter=0;iter<btag_disc.size();++iter) result[indx[iter]]=iter+1;
-    std::cout<<"btag discriminant  ";
-    for (auto i: btag_disc) std::cout << i << " ";
-    std::cout<<std::endl;
+    //std::cout<<"btag discriminant  ";
+    //for (auto i: btag_disc) std::cout << i << " ";
+    //std::cout<<std::endl;
     return result;
 }
