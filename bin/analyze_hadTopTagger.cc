@@ -1,4 +1,7 @@
 // latest
+// Version: Gen to rec approach.
+// data: 20180419, Siddhesh
+
 
 #include "FWCore/ParameterSet/interface/ParameterSet.h" // edm::ParameterSet
 #include "FWCore/PythonParameterSet/interface/MakeParameterSets.h" // edm::readPSetsFrom()
@@ -221,15 +224,18 @@ int main(int argc, char* argv[])
   RecoJetReaderHTTv2* jetReaderHTTv2 = new RecoJetReaderHTTv2(era, branchName_jetsHTTv2, branchName_subjetsHTTv2);
   inputTree -> registerReader(jetReaderHTTv2);
   RecoJetCollectionSelectorHTTv2 jetSelectorHTTv2(era);
+	RecoJetSelectorHTTv2 jetSelectorHTTv2_1(era);
 
   RecoJetReaderAK12* jetReaderAK12 = new RecoJetReaderAK12(era, branchName_jetsAK12, branchName_subjetsAK12);
   inputTree -> registerReader(jetReaderAK12);
   RecoJetCollectionSelectorAK12 jetSelectorAK12(era);
-
+	RecoJetSelectorAK12 jetSelectorAK12_1(era);
+	
   RecoJetReaderAK8* jetReaderAK8 = new RecoJetReaderAK8(era, branchName_jetsAK8, branchName_subjetsAK8);
   inputTree -> registerReader(jetReaderAK8);
   RecoJetCollectionSelectorAK8 jetSelectorAK8(era);
-
+	RecoJetSelectorAK8 jetSelectorAK8_1(era);
+	
 //--- declare generator level information
   GenJetReader* genJetReader = 0;
   LHEInfoReader* lheInfoReader = 0;
@@ -309,7 +315,12 @@ int main(int argc, char* argv[])
   double selectedEntries_weighted = 0.;
   TH1* histogram_analyzedEntries = fs.make<TH1D>("analyzedEntries", "analyzedEntries", 1, -0.5, +0.5);
   TH1* histogram_selectedEntries = fs.make<TH1D>("selectedEntries", "selectedEntries", 1, -0.5, +0.5);
-
+	cutFlowTableType cutFlowTable_ttH;
+	cutFlowTableType cutFlowTable_ttH_HTTv2;
+	cutFlowTableType cutFlowTable_ttH_AK12;
+	cutFlowTableType cutFlowTable_ttH_AK8;
+	cutFlowTableType cutFlowTable_ttH_resolved;
+	
 //--- open output file containing run:lumi:event numbers of events passing final event selection criteria
   std::ostream* selEventsFile = ( selEventsFileName_output != "" ) ? new std::ofstream(selEventsFileName_output.data(), std::ios::out) : 0;
   std::cout << "selEventsFileName_output = " << selEventsFileName_output << std::endl;
@@ -334,10 +345,11 @@ int main(int argc, char* argv[])
                 << " or " << inputTree -> getCurrentEventIdx() << " entry in #"
                 << (inputTree -> getProcessedFileCount() - 1)
                 << " (" << eventInfo
-                << ") file (" << selectedEntries << " Entries selected)\n";
+                << ") file (" << selectedEntries << " Entries selected)" << std::endl;
     }
     ++analyzedEntries;
     histogram_analyzedEntries->Fill(0.);
+		cutFlowTable_ttH.update("all events");
 
     if (run_lumi_eventSelector && !(*run_lumi_eventSelector)(eventInfo))
     {
@@ -393,11 +405,261 @@ int main(int argc, char* argv[])
     std::vector<GenParticle> genBJets = genBJetReader->read();
     std::vector<GenParticle> genWBosons = genWBosonReader->read();
     std::vector<GenParticle> genWJets = genWJetReader->read();
-    if (genWJets.size() < 2) continue;
+    //if (genWJets.size() < 2) continue;
 
-		std::cout << "\nTreeEntry "<<analyzedEntries << " passed selection conditions "<< genWJets.size() << std::endl;
-    std::cout << "Size of jet collections "
-      <<jet_ptrsHTTv2.size()<< " "<< jet_ptrsAK8.size() << " "<< jet_ptrsAK12.size() << " " << selJets.size() << std::endl;
+    if ( !(genTopQuarks.size() == 2) ) {
+      if ( isDEBUG ) std::cout << "FAILS '2 genTopQuarks' cut !!" << std::endl;
+      continue;
+    }
+    if ( !(genBJets.size() == 2) ) {
+      if ( isDEBUG ) std::cout << "FAILS '2 genBJets' cut !!" << std::endl;
+      continue;
+    }
+    if ( !(genWBosons.size() >= 2) ) { // CV: do not veto events in which Higgs boson decays into W bosons
+      if ( isDEBUG ) std::cout << "FAILS '>= 2 genWBosons' cut !!" << std::endl;
+      continue;
+    }
+    if ( !(genWJets.size() >= 2) ) {
+      if ( isDEBUG ) std::cout << "FAILS '>= 2 genWJets' cut !!" << std::endl;
+      continue;
+    }
+		cutFlowTable_ttH.update("Gen-level TopQuarks, BJets, WBosons, WJets number are as for ttH signal");
+		
+    const GenParticle* genTopQuark = 0;
+    const GenParticle* genAntiTopQuark = 0;
+    for ( std::vector<GenParticle>::const_iterator it = genTopQuarks.begin();
+	  it != genTopQuarks.end(); ++it ) {
+      if ( it->pdgId() == +6 && !genTopQuark     ) genTopQuark = &(*it);
+      if ( it->pdgId() == -6 && !genAntiTopQuark ) genAntiTopQuark = &(*it);
+    }
+    if ( !(genTopQuark && genAntiTopQuark) ) {
+      if ( isDEBUG ) std::cout << "FAILS 'genTopQuark && genAntiTopQuark' cut !!" << std::endl;
+      continue;
+    }
+
+    std::vector<const GenParticle*> genBJetsFromTop;
+    std::vector<const GenParticle*> genBJetsFromAntiTop;
+    for ( std::vector<GenParticle>::const_iterator it = genBJets.begin();
+	  it != genBJets.end(); ++it ) {
+      if ( it->pdgId() == +5 ) genBJetsFromTop.push_back(&(*it));
+      if ( it->pdgId() == -5 ) genBJetsFromAntiTop.push_back(&(*it));
+    }
+    if ( !(genBJetsFromTop.size() >= 1 && genBJetsFromAntiTop.size() >= 1) ) {
+      if ( isDEBUG ) std::cout << "FAILS 'genBJetFromTop && genBJetFromAntiTop' cut !!" << std::endl;
+      continue;
+    }
+
+    std::vector<const GenParticle*> genWBosonsFromTop;
+    std::vector<const GenParticle*> genWBosonsFromAntiTop;
+    for ( std::vector<GenParticle>::const_iterator it = genWBosons.begin();
+	  it != genWBosons.end(); ++it ) {
+      if ( it->pdgId() == +24 ) genWBosonsFromTop.push_back(&(*it));
+      if ( it->pdgId() == -24 ) genWBosonsFromAntiTop.push_back(&(*it));
+    }
+    if ( !(genWBosonsFromTop.size() >= 1 && genWBosonsFromAntiTop.size() >= 1) ) {
+      if ( isDEBUG ) std::cout << "FAILS 'genWBosonFromTop && genWBosonFromAntiTop' cut !!" << std::endl;
+      continue;
+    }
+
+    const GenParticle* genBJetFromTop = 0;
+    const GenParticle* genWBosonFromTop = 0;
+    double genBJet_plus_WBosonMassFromTop = -1.;
+    for ( std::vector<const GenParticle*>::const_iterator genBJet = genBJetsFromTop.begin();
+	  genBJet != genBJetsFromTop.end(); ++genBJet ) {
+      for ( std::vector<const GenParticle*>::const_iterator genWBoson = genWBosonsFromTop.begin();
+	    genWBoson != genWBosonsFromTop.end(); ++genWBoson ) {
+	double genBJet_plus_WBosonMass = ((*genBJet)->p4() + (*genWBoson)->p4()).mass();
+	if ( std::fabs(genBJet_plus_WBosonMass - genTopQuark->mass()) < std::fabs(genBJet_plus_WBosonMassFromTop - genTopQuark->mass())  ||
+	     !(genBJetFromTop && genWBosonFromTop) ) {
+	  genBJetFromTop = (*genBJet);
+	  genWBosonFromTop = (*genWBoson);
+	  genBJet_plus_WBosonMassFromTop = genBJet_plus_WBosonMass;
+	}
+      }
+    }
+    if ( !(std::fabs((genBJetFromTop->p4() + genWBosonFromTop->p4()).mass() - genTopQuark->mass()) < 15.) ) {
+      if ( isDEBUG ) {
+	std::cout << "FAILS 'genTopQuark mass' cut !!" << std::endl;
+	//std::cout << "genTopQuark: pT = " << genTopQuark->pt() << ", eta = " << genTopQuark->eta() << ","
+	//	    << " phi = " << genTopQuark->phi() << ", mass = " << genTopQuark->mass() << std::endl;
+	//std::cout << "genBJetFromTop: pT = " << genBJetFromTop->pt() << ", eta = " << genBJetFromTop->eta() << ","
+	//	    << " phi = " << genBJetFromTop->phi() << ", mass = " << genBJetFromTop->mass() << std::endl;
+	//std::cout << "genWBosonFromTop: pT = " << genWBosonFromTop->pt() << ", eta = " << genWBosonFromTop->eta() << ","
+	//	    << " phi = " << genWBosonFromTop->phi() << ", mass = " << genWBosonFromTop->mass() << std::endl;
+	//std::cout << "(mass of genBJetFromTop + genWBosonFromTop = " << (genBJetFromTop->p4() + genWBosonFromTop->p4()).mass() << ")" << std::endl;
+      }
+      continue;
+    }
+    const GenParticle* genBJetFromAntiTop = 0;
+    const GenParticle* genWBosonFromAntiTop = 0;
+    double genBJet_plus_WBosonMassFromAntiTop = -1.;
+    for ( std::vector<const GenParticle*>::const_iterator genBJet = genBJetsFromAntiTop.begin();
+	  genBJet != genBJetsFromAntiTop.end(); ++genBJet ) {
+      for ( std::vector<const GenParticle*>::const_iterator genWBoson = genWBosonsFromAntiTop.begin();
+	    genWBoson != genWBosonsFromAntiTop.end(); ++genWBoson ) {
+	double genBJet_plus_WBosonMass = ((*genBJet)->p4() + (*genWBoson)->p4()).mass();
+	if ( std::fabs(genBJet_plus_WBosonMass - genAntiTopQuark->mass()) < std::fabs(genBJet_plus_WBosonMassFromAntiTop - genAntiTopQuark->mass())  ||
+	     !(genBJetFromAntiTop && genWBosonFromAntiTop) ) {
+	  genBJetFromAntiTop = (*genBJet);
+	  genWBosonFromAntiTop = (*genWBoson);
+	  genBJet_plus_WBosonMassFromAntiTop = genBJet_plus_WBosonMass;
+	}
+      }
+    }
+    if ( !(std::fabs((genBJetFromAntiTop->p4() + genWBosonFromAntiTop->p4()).mass() - genAntiTopQuark->mass()) < 15.) ) {
+      if ( isDEBUG ) {
+	std::cout << "FAILS 'genAntiTopQuark mass' cut !!" << std::endl;
+	//std::cout << "genAntiTopQuark: pT = " << genAntiTopQuark->pt() << ", eta = " << genAntiTopQuark->eta() << ","
+	//	    << " phi = " << genAntiTopQuark->phi() << ", mass = " << genAntiTopQuark->mass() << std::endl;
+	//std::cout << "genBJetFromAntiTop: pT = " << genBJetFromAntiTop->pt() << ", eta = " << genBJetFromAntiTop->eta() << ","
+	//	    << " phi = " << genBJetFromAntiTop->phi() << ", mass = " << genBJetFromAntiTop->mass() << std::endl;
+	//std::cout << "genWBosonFromAntiTop: pT = " << genWBosonFromAntiTop->pt() << ", eta = " << genWBosonFromAntiTop->eta() << ","
+	//	    << " phi = " << genWBosonFromAntiTop->phi() << ", mass = " << genWBosonFromAntiTop->mass() << std::endl;
+	//std::cout << "(mass of genBJetFromAntiTop + genWBosonFromAntiTop = " << (genBJetFromAntiTop->p4() + genWBosonFromAntiTop->p4()).mass() << ")" << std::endl;
+      }
+      continue;
+    }
+
+    std::vector<const GenParticle*> genWJetsFromTop;
+    double genWJetsFromTop_mass = -1.;
+    std::vector<const GenParticle*> genWJetsFromAntiTop;
+    double genWJetsFromAntiTop_mass = -1.;
+    for ( std::vector<GenParticle>::const_iterator it1 = genWJets.begin(); it1 != genWJets.end(); ++it1 ) {
+      for ( std::vector<GenParticle>::const_iterator it2 = it1 + 1;
+	    it2 != genWJets.end(); ++it2 ) {
+	double genDijetMass = (it1->p4() + it2->p4()).mass();
+	// CV: Matching the generator-level charge of the two quarks to the generator-level charge of the W boson is a bit cumbersome,
+	//     because charge of Particles is stored as integer in Ntuple,
+	//     so only sign of charge is well defined for quarks (fractional charge is not supported!)
+	//
+	//     For W->jj decays, the sign of the charge of both jets is equal to the sign of the charge of the W boson,
+	//     i.e. the W boson decays either via
+	//       W+ -> up-type-quark (q = +2/3) + anti-down-type-quark (+1/3)
+	//     or via
+	//       W- -> anti-up-type-quark (q = -2/3) + down-type-quark (-1/3)
+	if ( boost::math::sign(it1->charge()) == boost::math::sign(genWBosonFromTop->charge()) &&
+	     boost::math::sign(it2->charge()) == boost::math::sign(genWBosonFromTop->charge()) ) {
+	  if ( std::fabs(genDijetMass - genWBosonFromTop->mass()) < 15. &&
+	       (genWJetsFromTop_mass == -1. ||
+		std::fabs(genDijetMass - genWBosonFromTop->mass()) < std::fabs(genWJetsFromTop_mass - genWBosonFromTop->mass())) ) {
+	    genWJetsFromTop.clear();
+	    genWJetsFromTop.push_back(&(*it1));
+	    genWJetsFromTop.push_back(&(*it2));
+	    genWJetsFromTop_mass = genDijetMass;
+	  }
+	}
+	if ( boost::math::sign(it1->charge()) == boost::math::sign(genWBosonFromAntiTop->charge()) &&
+	     boost::math::sign(it2->charge()) == boost::math::sign(genWBosonFromAntiTop->charge()) ) {
+	  if ( std::fabs(genDijetMass - genWBosonFromAntiTop->mass()) < 15. &&
+	       (genWJetsFromAntiTop_mass == -1. ||
+		std::fabs(genDijetMass - genWBosonFromAntiTop->mass()) < std::fabs(genWJetsFromAntiTop_mass - genWBosonFromAntiTop->mass())) ) {
+	    genWJetsFromAntiTop.clear();
+	    genWJetsFromAntiTop.push_back(&(*it1));
+	    genWJetsFromAntiTop.push_back(&(*it2));
+	    genWJetsFromAntiTop_mass = genDijetMass;
+	  }
+	}
+      }
+    }
+    //std::cout << "#genWJetsFromTop = " << genWJetsFromTop.size() << " (mass = " << genWJetsFromTop_mass << ")" << std::endl;
+    //std::cout << "#genWJetsFromAntiTop = " << genWJetsFromAntiTop.size() << " (mass = " << genWJetsFromAntiTop_mass << ")" << std::endl;
+    if ( !(genWJetsFromTop.size() == 2 || genWJetsFromAntiTop.size() == 2) ) {
+      if ( isDEBUG ) std::cout << "FAILS '2 genWJetsFromTop || 2 genWJetsFromAntiTop' cut !!" << std::endl;
+      continue;
+    }
+
+    const GenParticle* genWJetFromTop_lead = 0;
+    const GenParticle* genWJetFromTop_sublead = 0;
+    bool failsWbosonMassVeto_top = false;
+    if ( genWJetsFromTop.size() == 2 ) {
+      std::sort(genWJetsFromTop.begin(), genWJetsFromTop.end(), isHigherPt);
+      genWJetFromTop_lead = genWJetsFromTop[0];
+      genWJetFromTop_sublead = genWJetsFromTop[1];
+      if ( !(std::fabs((genWJetFromTop_lead->p4() + genWJetFromTop_sublead->p4()).mass() - genWBosonFromTop->mass()) < 15.) ) failsWbosonMassVeto_top = true;
+    }
+    //std::cout << "genWBosonFromTop: mass = " << genWBosonFromTop->mass();
+    //if ( genWJetFromTop_lead && genWJetFromTop_sublead ) {
+    //  std::cout << "," ;
+    //  std::cout << " mass of genWJetsFromTop = " << (genWJetFromTop_lead->p4() + genWJetFromTop_sublead->p4()).mass();
+    //}
+    //std::cout << std::endl;
+    if ( failsWbosonMassVeto_top ) {
+      if ( isDEBUG ) std::cout << "FAILS 'genWBosonFromTop mass' cut !!" << std::endl;
+      continue;
+    }
+
+    const GenParticle* genWJetFromAntiTop_lead = 0;
+    const GenParticle* genWJetFromAntiTop_sublead = 0;
+    bool failsWbosonMassVeto_antiTop = false;
+    if ( genWJetsFromAntiTop.size() == 2 ) {
+      std::sort(genWJetsFromAntiTop.begin(), genWJetsFromAntiTop.end(), isHigherPt);
+      genWJetFromAntiTop_lead = genWJetsFromAntiTop[0];
+      genWJetFromAntiTop_sublead = genWJetsFromAntiTop[1];
+      if ( !(std::fabs((genWJetFromAntiTop_lead->p4() + genWJetFromAntiTop_sublead->p4()).mass() - genWBosonFromAntiTop->mass()) < 15.) ) failsWbosonMassVeto_antiTop = true;
+    }
+    //std::cout << "genWBosonFromAntiTop: mass = " << genWBosonFromAntiTop->mass();
+    //if ( genWJetFromAntiTop_lead && genWJetFromAntiTop_sublead ) {
+    //  std::cout << "," ;
+    //  std::cout << " mass of genWJetsFromAntiTop = " << (genWJetFromAntiTop_lead->p4() + genWJetFromAntiTop_sublead->p4()).mass();
+    //}
+    //std::cout << std::endl;
+    if ( failsWbosonMassVeto_antiTop ) {
+      if ( isDEBUG ) std::cout << "FAILS 'genWBosonFromAntiTop mass' cut !!" << std::endl;
+      continue;
+    }
+
+    if ( isDEBUG ) {
+      std::cout << "top:" << (*genTopQuark) << std::endl;
+      std::cout << " b:" << (*genBJetFromTop) << std::endl;
+      std::cout << " W:" << (*genWBosonFromTop) << std::endl;
+      if ( genWJetFromTop_lead && genWJetFromTop_sublead ) {
+	std::cout << " Wj1:" << (*genWJetFromTop_lead) << std::endl;
+	std::cout << " Wj2:" << (*genWJetFromTop_sublead) << std::endl;
+      } else {
+	std::cout << "(leptonic W decay)" << std::endl;
+      }
+      std::cout << "anti-top:" << (*genAntiTopQuark) << std::endl;
+      std::cout << " b:" << (*genBJetFromAntiTop) << std::endl;
+      std::cout << " W:" << (*genWBosonFromAntiTop) << std::endl;
+      if ( genWJetFromAntiTop_lead && genWJetFromAntiTop_sublead ) {
+	std::cout << " Wj1:" << (*genWJetFromAntiTop_lead) << std::endl;
+	std::cout << " Wj2:" << (*genWJetFromAntiTop_sublead) << std::endl;
+      } else {
+	std::cout << "(leptonic W decay)" << std::endl;
+      }
+      std::cout << std::endl;
+    }
+
+    if ( !((genBJetFromTop             &&
+	    genWJetFromTop_lead        &&
+	    genWJetFromTop_sublead    ) ||
+	   (genBJetFromAntiTop         &&
+	    genWJetFromAntiTop_lead    &&
+	    genWJetFromAntiTop_sublead)) ) {
+      if ( isDEBUG ) std::cout << "FAILS 'genJet triplet' cut !!" << std::endl;
+      continue;
+    }
+		cutFlowTable_ttH.update("Gen-level Bjet and 2 WJets from top/antitop are as per ttH signal");
+		
+    Particle::LorentzVector genWBosonFromTopP4;
+    if ( genWJetFromTop_lead && genWJetFromTop_sublead ) {
+      genWBosonFromTopP4 = genWJetFromTop_lead->p4() + genWJetFromTop_sublead->p4();
+    }
+    Particle::LorentzVector genWBosonFromAntiTopP4;
+    if ( genWJetFromAntiTop_lead && genWJetFromAntiTop_sublead ) {
+      genWBosonFromAntiTopP4 = genWJetFromAntiTop_lead->p4() + genWJetFromAntiTop_sublead->p4();
+    }
+
+    Particle::LorentzVector genTopP4;
+    if ( genBJetFromTop && genWJetFromTop_lead && genWJetFromTop_sublead ) {
+      genTopP4 = genBJetFromTop->p4() + genWJetFromTop_lead->p4() + genWJetFromTop_sublead->p4();
+    }
+    Particle::LorentzVector genAntiTopP4;
+    if ( genBJetFromAntiTop && genWJetFromAntiTop_lead && genWJetFromAntiTop_sublead ) {
+      genAntiTopP4 = genBJetFromAntiTop->p4() + genWJetFromAntiTop_lead->p4() + genWJetFromAntiTop_sublead->p4();
+    }
+
+
     int collectionSize = 0;
     Particle::LorentzVector unfittedHadTopP4, selBJet, selWJet1, selWJet2 ;
     bool isGenMatched = false;
@@ -406,7 +668,294 @@ int main(int argc, char* argv[])
     double genTopPtProbeTop = -1.;
     double genTopPtProbeAntiTop = -1.;
     double genTopPt = -1.;
+		int typeTop = -1; // 1 - FatTop; 2 - countFatAK8 ? countFatAK12; 3- countResolved;
+
+		bool isCategoryFatTopQuark = false;
+		bool isCategoryFatWBoson = false;
+		//bool isCategoryResolvedJet = false;
+    //-------------------------------------------------------------------------------------------------------------------
+    // case 1: all three jets contained within dR=1.5 "fat" jet,
+    //         reconstructed by hep-top-tagger (HTTv2) algorithm
+
+		
+    if ( (genBJetFromTop     && genWJetFromTop_lead     && genWJetFromTop_sublead     && genTopP4.pt()     > 200.) ||
+				 (genBJetFromAntiTop && genWJetFromAntiTop_lead && genWJetFromAntiTop_sublead && genAntiTopP4.pt() > 200.) ) {
+			cutFlowTable_ttH_HTTv2.update("HTTv2: gen top above 200GeV");
+			
+			if ( (genBJetFromTop             && genBJetFromTop->absEta()          < 2.4 &&
+						genWJetFromTop_lead        && genWJetFromTop_lead->absEta()     < 2.4 &&
+						genWJetFromTop_sublead     && genWJetFromTop_lead->absEta()     < 2.4) ||
+					 (genBJetFromAntiTop         && genBJetFromAntiTop->absEta()      < 2.4 &&
+						genWJetFromAntiTop_lead    && genWJetFromAntiTop_lead->absEta() < 2.4 &&
+						genWJetFromAntiTop_sublead && genWJetFromAntiTop_lead->absEta() < 2.4) ) {
+				cutFlowTable_ttH_HTTv2.update("HTTv2: eta < 2.4");
+				
+				if ( (genBJetFromTop && genWJetFromTop_lead && genWJetFromTop_sublead             &&
+							deltaR(genTopP4, genBJetFromTop->p4())                                < 1.5 &&
+							deltaR(genTopP4, genWJetFromTop_lead->p4())                           < 1.5 &&
+							deltaR(genTopP4, genWJetFromTop_sublead->p4())                        < 1.5) ||
+						 (genBJetFromAntiTop && genWJetFromAntiTop_lead && genWJetFromAntiTop_sublead &&
+							deltaR(genAntiTopP4, genBJetFromAntiTop->p4())                        < 1.5 &&
+							deltaR(genAntiTopP4, genWJetFromAntiTop_lead->p4())                   < 1.5 &&
+							deltaR(genAntiTopP4, genWJetFromAntiTop_sublead->p4())                < 1.5) ) {	
+					cutFlowTable_ttH_HTTv2.update("HTTv2: dR(top and jets) < 1.5");
+
+					if (jet_ptrsHTTv2.size() >= 1) cutFlowTable_ttH_HTTv2.update("HTTv2: jet_ptrsHTTv2.size() >= 1");
+
+					int nGenMatchedHTTv2 = 0; 
+					typeTop = 1;
+					//const RecoJetHTTv2 *recTop = 0;
+					for ( std::vector<const RecoJetHTTv2*>::const_iterator jetIter = jet_ptrsHTTv2.begin();
+								jetIter != jet_ptrsHTTv2.end(); ++jetIter ) {
+
+						//recTop = (*jetIter);
+						if (!((*jetIter)->pt() > 200)) continue;
+						if (!((*jetIter)->subJet1()->pt() && (*jetIter)->subJet2()->pt() && (*jetIter)->subJet3()->pt() )) continue;
+						//if (!( jetSelectorHTTv2_1(*recTop) )) continue;
+						if (!( jetSelectorHTTv2_1(**jetIter) )) continue;
+						
+						unfittedHadTopP4 = (*jetIter)->p4();
+						// I just take the subjet with highest b-tag score to be the b-candidate
+						const RecoSubjetHTTv2* recSubJet[3];
+						recSubJet[0] = (*jetIter)->subJet1();
+						recSubJet[1] = (*jetIter)->subJet2();
+						recSubJet[2] = (*jetIter)->subJet3();
+						std::vector<double> btag_disc = {recSubJet[0]->BtagCSV(), recSubJet[1]->BtagCSV(), recSubJet[2]->BtagCSV()};
+						auto btag_order = sort_indexes(btag_disc);
+						selBJet = recSubJet[btag_order[0]]->p4();
+						selWJet1 = recSubJet[btag_order[1]]->p4();
+						selWJet2 = recSubJet[btag_order[2]]->p4();
+
+						std::map<int, bool> genMatchingTop = isGenMatchedJetTriplet(selBJet, selWJet1, selWJet2, genTopQuarks, genBJets, genWBosons, genWJets, kGenTop, genTopPtProbeTop, typeTop, unfittedHadTopP4);
+						std::map<int, bool> genMatchingAntiTop = isGenMatchedJetTriplet(selBJet, selWJet1,  selWJet2, genTopQuarks, genBJets, genWBosons, genWJets, kGenAntiTop, genTopPtProbeAntiTop, typeTop, unfittedHadTopP4);
+						if(genMatchingTop[kGenMatchedTriplet]) genTopPt=genTopPtProbeTop;
+						if(genMatchingAntiTop[kGenMatchedTriplet]) genTopPt=genTopPtProbeAntiTop;
+						isGenMatched = (genMatchingTop[kGenMatchedTriplet] || genMatchingAntiTop[kGenMatchedTriplet]);
+						fatjet_isGenMatched = (genMatchingTop[kGenMatchedFatJet] || genMatchingAntiTop[kGenMatchedFatJet]);
+						b_isGenMatched = (genMatchingTop[kGenMatchedBJet] || genMatchingAntiTop[kGenMatchedBJet]);
+						
+						if (isGenMatched) nGenMatchedHTTv2++;
+					}
+					
+					if (nGenMatchedHTTv2 >= 1) {
+						isCategoryFatTopQuark = true;
+						cutFlowTable_ttH_HTTv2.update("HTTv2: nGenMatchedHTTv2 >= 1  ** Rec ttH signal");
+					}
+				}
+			}
+		}
+    //-------------------------------------------------------------------------------------------------------------------
+
+    //-------------------------------------------------------------------------------------------------------------------
+    // case 2: two jets from hadronic W boson decay contained within dR=1.2 "fat" jet,
+    //         reconstructed by by anti-kT algorithm with dR=1.2 (AK12),
+    //         while b-jet from top decay is resolved as separate jets,
+    //         reconstructed by anti-kT algorithm with dR=0.4 (AK4)
+
+
+		//auto btag_order = calRank(selJets);
+
+    if ( (genBJetFromTop                                        && genBJetFromTop->pt()         >  20. &&
+					genWJetFromTop_lead && genWJetFromTop_sublead         && genWBosonFromTopP4.pt()      > 100.) ||
+				 (genBJetFromAntiTop                                    && genBJetFromAntiTop->pt()     >  20. &&
+					genWJetFromAntiTop_lead && genWJetFromAntiTop_sublead && genWBosonFromAntiTopP4.pt()  > 100.) ) {
+			cutFlowTable_ttH_AK12.update("AK12: Bjet > 20 GeV and WBoson > 100 GeV");
+			
+			if ( (genBJetFromTop             && genBJetFromTop->absEta()          < 2.4 &&
+						genWJetFromTop_lead        && genWJetFromTop_lead->absEta()     < 2.4 &&
+						genWJetFromTop_sublead     && genWJetFromTop_lead->absEta()     < 2.4) ||
+					 (genBJetFromAntiTop         && genBJetFromAntiTop->absEta()      < 2.4 &&
+						genWJetFromAntiTop_lead    && genWJetFromAntiTop_lead->absEta() < 2.4 &&
+						genWJetFromAntiTop_sublead && genWJetFromAntiTop_lead->absEta() < 2.4) ) {
+				cutFlowTable_ttH_AK12.update("AK12: eta < 2.4");
+				
+				if ( (genWJetFromTop_lead && genWJetFromTop_sublead                          &&
+							deltaR(genWBosonFromTopP4, genWJetFromTop_lead->p4())            < 1.2 &&
+							deltaR(genWBosonFromTopP4, genWJetFromTop_sublead->p4())         < 1.2) ||
+						 (genWJetFromAntiTop_lead && genWJetFromAntiTop_sublead                  &&
+							deltaR(genWBosonFromAntiTopP4, genWJetFromAntiTop_lead->p4())    < 1.2 &&
+							deltaR(genWBosonFromAntiTopP4, genWJetFromAntiTop_sublead->p4()) < 1.2) ) {
+					cutFlowTable_ttH_AK12.update("AK12: dR(W and jets) < 1.2");
+
+					if (jet_ptrsAK12.size() >= 1 && selJets.size() >= 1) cutFlowTable_ttH_AK12.update("AK12: jet_ptrsAK12.size() >= 1 && selJets.size() >= 1");
+
+					int nGenMatchedAK12 = 0;
+					int nGenMatchedAK12_1 = 0;
+					typeTop = 2; 
+					for ( std::vector<const RecoJetAK12*>::const_iterator jetIter = jet_ptrsAK12.begin();
+								jetIter != jet_ptrsAK12.end(); ++jetIter ) {
+
+						if (!((*jetIter)->pt() > 130)) continue;
+						if (!((*jetIter)->subJet1()->pt() > 10. &&  (*jetIter)->subJet1()->pt() > 10.)) continue;
+						if (!(jetSelectorAK12_1(**jetIter))) continue;
+
+							for ( unsigned int bjetCandidate = 0; bjetCandidate < selJets.size(); bjetCandidate++ ) {
+							
+              // add cleaning
+              unfittedHadTopP4 = (*jetIter)->p4() + (*selJets[bjetCandidate]).p4();
+              selBJet = (*selJets[bjetCandidate]).p4();
+
+							
+              selWJet1 = (*jetIter)->subJet1()->p4();
+              selWJet2 = (*jetIter)->subJet2()->p4();
+              //std::cout<<"mass "<< unfittedHadTopP4.mass() <<" value "<< (selBJet + selWJet1 + selWJet2).mass() <<std::endl;
+              // calculate matching
+              std::map<int, bool> genMatchingTop = isGenMatchedJetTriplet(selBJet, selWJet1, selWJet2, genTopQuarks, genBJets, genWBosons, genWJets, kGenTop, genTopPtProbeTop, typeTop,(*jetIter)->p4());
+              std::map<int, bool> genMatchingAntiTop = isGenMatchedJetTriplet(selBJet, selWJet1,  selWJet2, genTopQuarks, genBJets, genWBosons, genWJets, kGenAntiTop, genTopPtProbeAntiTop, typeTop,(*jetIter)->p4());
+              if(genMatchingTop[kGenMatchedTriplet]) genTopPt=genTopPtProbeTop;
+              if(genMatchingAntiTop[kGenMatchedTriplet]) genTopPt=genTopPtProbeAntiTop;
+              isGenMatched = (genMatchingTop[kGenMatchedTriplet] || genMatchingAntiTop[kGenMatchedTriplet]);
+              fatjet_isGenMatched = (genMatchingTop[kGenMatchedFatJet] || genMatchingAntiTop[kGenMatchedFatJet]);
+              b_isGenMatched = (genMatchingTop[kGenMatchedBJet] || genMatchingAntiTop[kGenMatchedBJet]);
+
+							if (isGenMatched) nGenMatchedAK12++;
+							//if (isGenMatched && btag_order[bjetCandidate] > cutJetCombo) nGenMatchedAK12_1++;
+							    						
+
+						}
+					}
+
+					if (nGenMatchedAK12 >= 1) {
+						isCategoryFatWBoson = true;
+						cutFlowTable_ttH_AK12.update("AK12: nGenMatchedAK12 >= 1  ** Rec ttH signal");
+						if (isCategoryFatTopQuark) cutFlowTable_ttH_AK12.update("AK12: Category 1 and Category2 both");
+					}
+					//if (nGenMatchedAK12_1 >= 1) cutFlowTable_ttH_AK12.update("AK12: nGenMatchedAK12_1 >= 1  ** Rec ttH signal");
+					
+				}
+			}
+		}
+    //-------------------------------------------------------------------------------------------------------------------
+
+    //-------------------------------------------------------------------------------------------------------------------
+    // case 3: all three jets resolved as separate jets,
+    //         reconstructed by anti-kT algorithm with dR=0.4 (AK4)
+
+    if ( (genBJetFromTop             && genBJetFromTop->pt()          > 25. &&
+					genWJetFromTop_lead        && genWJetFromTop_lead->pt()     > 25. &&
+					genWJetFromTop_sublead     && genWJetFromTop_lead->pt()     > 25.) ||
+				 (genBJetFromAntiTop         && genBJetFromAntiTop->pt()      > 25. &&
+					genWJetFromAntiTop_lead    && genWJetFromAntiTop_lead->pt() > 25. &&
+					genWJetFromAntiTop_sublead && genWJetFromAntiTop_lead->pt() > 25.) ) {
+			cutFlowTable_ttH_resolved.update("AK4: jets > 25 GeV ");
+			
+	    if ( (genBJetFromTop             && genBJetFromTop->absEta()          < 2.4 &&
+						genWJetFromTop_lead        && genWJetFromTop_lead->absEta()     < 2.4 &&
+						genWJetFromTop_sublead     && genWJetFromTop_lead->absEta()     < 2.4) ||
+					 (genBJetFromAntiTop         && genBJetFromAntiTop->absEta()      < 2.4 &&
+						genWJetFromAntiTop_lead    && genWJetFromAntiTop_lead->absEta() < 2.4 &&
+						genWJetFromAntiTop_sublead && genWJetFromAntiTop_lead->absEta() < 2.4) ) {
+				cutFlowTable_ttH_resolved.update("AK4: eta < 2.4");
+
+				if ( (genBJetFromTop                                                                &&
+							genWJetFromTop_lead                                                           &&
+							genWJetFromTop_sublead                                                        &&
+							deltaR(genBJetFromTop->p4(),          genWJetFromTop_lead->p4())        > 0.4 &&
+							deltaR(genBJetFromTop->p4(),          genWJetFromTop_sublead->p4())     > 0.4 &&
+							deltaR(genWJetFromTop_lead->p4(),     genWJetFromTop_sublead->p4())     > 0.4) ||
+						 (genBJetFromAntiTop                                                            &&
+							genWJetFromAntiTop_lead                                                       &&
+							genWJetFromAntiTop_sublead                                                    &&
+							deltaR(genBJetFromAntiTop->p4(),      genWJetFromAntiTop_lead->p4())    > 0.4 &&
+							deltaR(genBJetFromAntiTop->p4(),      genWJetFromAntiTop_sublead->p4()) > 0.4 &&
+							deltaR(genWJetFromAntiTop_lead->p4(), genWJetFromAntiTop_sublead->p4()) > 0.4) ) {
+					cutFlowTable_ttH_resolved.update("AK4: dR(W and jets) > 0.4");
+																														 
+					if (selJets.size() >= 3) cutFlowTable_ttH_resolved.update("AK4: selJets.size() >= 3");
+
+					int nGenMatchedAK4   = 0;
+					int nGenMatchedAK4_1 = 0;
+					for ( unsigned int bjetCandidate = 0; bjetCandidate < selJets.size(); bjetCandidate++ )  {
+            for ( std::vector<const RecoJet*>::const_iterator selWJet1Candidate = selJets.begin();
+									selWJet1Candidate != selJets.end(); ++selWJet1Candidate ) {
+							if ( (*selWJet1Candidate)->pt() == (*selJets[bjetCandidate]).pt() ) continue;
+							for ( std::vector<const RecoJet*>::const_iterator selWJet2Candidate = selWJet1Candidate + 1;
+										selWJet2Candidate != selJets.end(); ++selWJet2Candidate ) {
+								if ( (*selWJet2Candidate)->pt() == (*selJets[bjetCandidate]).pt() ) continue;
+								if ( (*selWJet2Candidate)->pt() == (*selWJet1Candidate)->pt() ) continue;
+								selBJet = (*selJets[bjetCandidate]).p4();
+								selWJet1 = (*selWJet1Candidate)->p4();
+								selWJet2 = (*selWJet2Candidate)->p4();
+								// calculate gen matching
+								std::map<int, bool> genMatchingTop = isGenMatchedJetTriplet(selBJet, selWJet1, selWJet2, genTopQuarks, genBJets, genWBosons, genWJets, kGenTop, genTopPtProbeTop);
+								std::map<int, bool> genMatchingAntiTop = isGenMatchedJetTriplet(selBJet, selWJet1,  selWJet2, genTopQuarks, genBJets, genWBosons, genWJets, kGenAntiTop, genTopPtProbeAntiTop);
+								if(genMatchingTop[kGenMatchedTriplet]) genTopPt=genTopPtProbeTop;
+								if(genMatchingAntiTop[kGenMatchedTriplet]) genTopPt=genTopPtProbeAntiTop;
+								isGenMatched = (genMatchingTop[kGenMatchedTriplet] || genMatchingAntiTop[kGenMatchedTriplet]);
+								fatjet_isGenMatched = (genMatchingTop[kGenMatchedFatJet] || genMatchingAntiTop[kGenMatchedFatJet]);
+								b_isGenMatched = (genMatchingTop[kGenMatchedBJet] || genMatchingAntiTop[kGenMatchedBJet]);
+								
+								if (isGenMatched) nGenMatchedAK4++;
+								if (isGenMatched &&
+										deltaR(selBJet, selWJet1) > 0.3 &&
+										deltaR(selBJet, selWJet2) > 0.3 &&
+										deltaR(selWJet1, selWJet2) > 0.3 ) nGenMatchedAK4_1++;
+							}
+						}
+					}
+
+					if (nGenMatchedAK4 >= 1) {
+						cutFlowTable_ttH_resolved.update("AK4: nGenMatchedAK4 >= 1  ** Rec ttH signal");
+						//isCategoryResolvedJet = true;
+
+						if (isCategoryFatTopQuark) cutFlowTable_ttH_resolved.update("AK4: isCategoryFatTopQuark and isCategoryResolvedJest");
+						if (isCategoryFatWBoson) cutFlowTable_ttH_resolved.update("AK4: isCategoryFatWBoson  and isCategoryResolvedJest");
+						if (isCategoryFatWBoson && isCategoryFatTopQuark) cutFlowTable_ttH_resolved.update("AK4: isCategoryFatWBoson  and isCategoryResolvedJest and isCategoryFatTopQuark");
+					}
+					if (nGenMatchedAK4_1 >= 1) {
+						cutFlowTable_ttH_resolved.update("AK4: nGenMatchedAK4_1 >= 1  ** Rec ttH signal");
+						//isCategoryResolvedJet = true;
+
+						if (isCategoryFatTopQuark) cutFlowTable_ttH_resolved.update("AK4: isCategoryFatTopQuark and isCategoryResolvedJest_1");
+						if (isCategoryFatWBoson) cutFlowTable_ttH_resolved.update("AK4: isCategoryFatWBoson  and isCategoryResolvedJest_1");
+						if (isCategoryFatWBoson && isCategoryFatTopQuark) cutFlowTable_ttH_resolved.update("AK4: isCategoryFatWBoson  and isCategoryResolvedJest_1 and isCategoryFatTopQuark");
+					}
+					
+					
+				}
+			}
+
+		}
+		
+
+
+		continue;
+
+
+
+
+
+
+
+
+
+
+
+		
+
+		std::cout << "\nTreeEntry "<<analyzedEntries << " passed selection conditions "<< genWJets.size() << std::endl;
+    std::cout << "Size of jet collections "
+      <<jet_ptrsHTTv2.size()<< " "<< jet_ptrsAK8.size() << " "<< jet_ptrsAK12.size() << " " << selJets.size() << std::endl;
+    /*int collectionSize = 0;
+    Particle::LorentzVector unfittedHadTopP4, selBJet, selWJet1, selWJet2 ;
+    bool isGenMatched = false;
+		bool fatjet_isGenMatched = false;
+    bool b_isGenMatched = false;
+    double genTopPtProbeTop = -1.;
+    double genTopPtProbeAntiTop = -1.;
+    double genTopPt = -1.;
     int typeTop = -1; // 1 - FatTop; 2 - countFatAK8 ? countFatAK12; 3- countResolved;
+		*/
+
+		collectionSize = 0;
+		isGenMatched = false;
+		fatjet_isGenMatched = false;
+		b_isGenMatched = false;
+		genTopPtProbeTop = -1.;
+		genTopPtProbeAntiTop = -1.;
+		genTopPt = -1.;
+
+		typeTop = -1; // 1 - FatTop; 2 - countFatAK8 ? countFatAK12; 3- countResolved;
     if (inAK12) typeTop = getType(jet_ptrsHTTv2.size(), jet_ptrsAK12.size(), selJets.size());
     else typeTop = getType(jet_ptrsHTTv2.size(), jet_ptrsAK8.size(), selJets.size());
     // start loops in jets
@@ -650,6 +1199,14 @@ int main(int argc, char* argv[])
             << " analyzed = " << analyzedEntries << '\n'
             << " selected = " << selectedEntries << " (weighted = " << selectedEntries_weighted << ")\n\n"
             << "cut-flow table" << std::endl;
+
+	cutFlowTable_ttH.print(std::cout);
+	std::cout << "\nHTTv2:" << std::endl;
+	cutFlowTable_ttH_HTTv2.print(std::cout);
+	std::cout << "\nAK12:" << std::endl;
+	cutFlowTable_ttH_AK12.print(std::cout);
+	std::cout << "\nresolved:" << std::endl;
+	cutFlowTable_ttH_resolved.print(std::cout);
 
   delete jetReader;
   delete genJetReader;
