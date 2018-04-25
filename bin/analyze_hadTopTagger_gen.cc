@@ -1,3 +1,7 @@
+
+// version preprocessor if condition used to comment out 2lss-1tau selection
+
+
 #include "FWCore/ParameterSet/interface/ParameterSet.h" // edm::ParameterSet
 #include "FWCore/PythonParameterSet/interface/MakeParameterSets.h" // edm::readPSetsFrom()
 #include "FWCore/Utilities/interface/Exception.h" // cms::Exception
@@ -99,6 +103,9 @@
 #include <math.h> // acos, sqrt
 #include <fstream> // std::ofstream
 #include <assert.h> // assert
+
+#define DoNotUse2lss_1tauConditions // uncomment this if 2lss_1tau rec-level selection conditions are not required
+
 
 typedef math::PtEtaPhiMLorentzVector LV;
 typedef std::vector<std::string> vstring;
@@ -211,7 +218,8 @@ int main(int argc, char* argv[])
   else if ( leptonChargeSelection_string == "SS" ) leptonChargeSelection = kSS;
   else throw cms::Exception("analyze_hadTopTagger_gen")
     << "Invalid Configuration parameter 'leptonChargeSelection' = " << leptonChargeSelection_string << " !!\n";
-
+	std::cout<<"leptonChargeSelection:"<<leptonChargeSelection<<std::endl;
+	
   std::string leptonSelection_string = cfg_analyze.getParameter<std::string>("leptonSelection").data();
   std::cout << "leptonSelection_string = " << leptonSelection_string << std::endl;
   int leptonSelection = -1;
@@ -252,7 +260,8 @@ int main(int argc, char* argv[])
   else if ( chargeSumSelection_string == "SS" ) chargeSumSelection = kSS;
   else throw cms::Exception("analyze_hadTopTagger_gen")
     << "Invalid Configuration parameter 'chargeSumSelection' = " << chargeSumSelection_string << " !!\n";
-
+	std::cout<<"chargeSumSelection:"<<chargeSumSelection<<std::endl;
+	
   bool use_HIP_mitigation_mediumMuonId = cfg_analyze.getParameter<bool>("use_HIP_mitigation_mediumMuonId");
   std::cout << "use_HIP_mitigation_mediumMuonId = " << use_HIP_mitigation_mediumMuonId << std::endl;
 
@@ -513,13 +522,13 @@ int main(int argc, char* argv[])
       std::cout << "processing run = " << eventInfo.run << ", ls = " << eventInfo.lumi << ", event = " << eventInfo.event << std::endl;
     }
 
-    if(inputTree -> canReport(reportEvery))
+    if(inputTree -> canReport(reportEvery) )
     {
       std::cout << "processing Entry " << inputTree -> getCurrentMaxEventIdx()
                 << " or " << inputTree -> getCurrentEventIdx() << " entry in #"
                 << (inputTree -> getProcessedFileCount() - 1)
                 << " (" << eventInfo
-                << ") file (" << selectedEntries << " Entries selected)\n";
+                << ") file (" << selectedEntries << " Entries selected)"<<std::endl;
     }
     ++analyzedEntries;
     histogram_analyzedEntries->Fill(0.);
@@ -529,51 +538,6 @@ int main(int argc, char* argv[])
       continue;
     }
 
-    bool isTriggered_1e = hltPaths_isTriggered(triggers_1e) || (isMC && !apply_trigger_bits);
-    bool isTriggered_2e = hltPaths_isTriggered(triggers_2e) || (isMC && !apply_trigger_bits);
-    bool isTriggered_1mu = hltPaths_isTriggered(triggers_1mu) || (isMC && !apply_trigger_bits);
-    bool isTriggered_2mu = hltPaths_isTriggered(triggers_2mu) || (isMC && !apply_trigger_bits);
-    bool isTriggered_1e1mu = hltPaths_isTriggered(triggers_1e1mu) || (isMC && !apply_trigger_bits);
-
-    bool selTrigger_1e = use_triggers_1e && isTriggered_1e;
-    bool selTrigger_2e = use_triggers_2e && isTriggered_2e;
-    bool selTrigger_1mu = use_triggers_1mu && isTriggered_1mu;
-    bool selTrigger_2mu = use_triggers_2mu && isTriggered_2mu;
-    bool selTrigger_1e1mu = use_triggers_1e1mu && isTriggered_1e1mu;
-    if ( !(selTrigger_1e || selTrigger_2e || selTrigger_1mu || selTrigger_2mu || selTrigger_1e1mu) ) {
-      continue;
-    }
-
-//--- rank triggers by priority and ignore triggers of lower priority if a trigger of higher priority has fired for given event;
-//    the ranking of the triggers is as follows: 2mu, 1e1mu, 2e, 1mu, 1e
-// CV: this logic is necessary to avoid that the same event is selected multiple times when processing different primary datasets
-    if ( !isMC && !isDEBUG ) {
-      if ( selTrigger_1e && (isTriggered_2e || isTriggered_1mu || isTriggered_2mu || isTriggered_1e1mu) ) {
-	continue;
-      }
-      if ( selTrigger_2e && (isTriggered_2mu || isTriggered_1e1mu) ) {
-	continue;
-      }
-      if ( selTrigger_1mu && (isTriggered_2e || isTriggered_2mu || isTriggered_1e1mu) ) {
-	continue;
-      }
-      if ( selTrigger_1e1mu && isTriggered_2mu ) {
-	continue;
-      }
-    }
-    cutFlowTable_2lss_1tau.update("trigger");
-
-    if ( (selTrigger_2mu   && !apply_offline_e_trigger_cuts_2mu)   ||
-	 (selTrigger_1mu   && !apply_offline_e_trigger_cuts_1mu)   ||
-	 (selTrigger_2e    && !apply_offline_e_trigger_cuts_2e)    ||
-	 (selTrigger_1e1mu && !apply_offline_e_trigger_cuts_1e1mu) ||
-	 (selTrigger_1e    && !apply_offline_e_trigger_cuts_1e)    ) {
-      fakeableElectronSelector.disable_offline_e_trigger_cuts();
-      tightElectronSelector.disable_offline_e_trigger_cuts();
-    } else {
-      fakeableElectronSelector.enable_offline_e_trigger_cuts();
-      tightElectronSelector.enable_offline_e_trigger_cuts();
-    }
 
 //--- build collections of electrons, muons and hadronic taus;
 //    resolve overlaps in order of priority: muon, electron,
@@ -645,6 +609,8 @@ int main(int argc, char* argv[])
     //}
     selHadTaus = pickFirstNobjects(selHadTaus, 1);
 
+		
+		
 //--- build collections of jets and select subset of jets passing b-tagging criteria
     std::vector<RecoJet> jets = jetReader->read();
     std::vector<const RecoJet*> jet_ptrs = convert_to_ptrs(jets);
@@ -664,7 +630,9 @@ int main(int argc, char* argv[])
 //--- build collections of jets reconstructed by anti-kT algorithm with dR=1.2 (AK12)
     std::vector<RecoJetAK12> jetsAK12 = jetReaderAK12->read();
     std::vector<const RecoJetAK12*> jet_ptrsAK12 = convert_to_ptrs(jetsAK12);
+		
 
+		
 //--- build collections of generator level particles (after some cuts are applied, to safe computing time)
     std::vector<GenLepton> genLeptons;
     std::vector<GenLepton> genElectrons;
@@ -708,6 +676,57 @@ int main(int argc, char* argv[])
       jetGenMatcher.addGenJetMatch(selJets, genJets, 0.2);
     }
 
+		
+#ifndef DoNotUse2lss_1tauConditions
+#pragma message ("Warning*** DoNotUse2lss_1tauConditions is not defined")		
+
+		bool isTriggered_1e = hltPaths_isTriggered(triggers_1e) || (isMC && !apply_trigger_bits);
+    bool isTriggered_2e = hltPaths_isTriggered(triggers_2e) || (isMC && !apply_trigger_bits);
+    bool isTriggered_1mu = hltPaths_isTriggered(triggers_1mu) || (isMC && !apply_trigger_bits);
+    bool isTriggered_2mu = hltPaths_isTriggered(triggers_2mu) || (isMC && !apply_trigger_bits);
+    bool isTriggered_1e1mu = hltPaths_isTriggered(triggers_1e1mu) || (isMC && !apply_trigger_bits);
+
+    bool selTrigger_1e = use_triggers_1e && isTriggered_1e;
+    bool selTrigger_2e = use_triggers_2e && isTriggered_2e;
+    bool selTrigger_1mu = use_triggers_1mu && isTriggered_1mu;
+    bool selTrigger_2mu = use_triggers_2mu && isTriggered_2mu;
+    bool selTrigger_1e1mu = use_triggers_1e1mu && isTriggered_1e1mu;
+    if ( !(selTrigger_1e || selTrigger_2e || selTrigger_1mu || selTrigger_2mu || selTrigger_1e1mu) ) {
+      continue;
+    }
+
+//--- rank triggers by priority and ignore triggers of lower priority if a trigger of higher priority has fired for given event;
+//    the ranking of the triggers is as follows: 2mu, 1e1mu, 2e, 1mu, 1e
+// CV: this logic is necessary to avoid that the same event is selected multiple times when processing different primary datasets
+    if ( !isMC && !isDEBUG ) {
+      if ( selTrigger_1e && (isTriggered_2e || isTriggered_1mu || isTriggered_2mu || isTriggered_1e1mu) ) {
+	continue;
+      } 
+      if ( selTrigger_2e && (isTriggered_2mu || isTriggered_1e1mu) ) {
+	continue;
+      }
+      if ( selTrigger_1mu && (isTriggered_2e || isTriggered_2mu || isTriggered_1e1mu) ) {
+	continue;
+      }
+      if ( selTrigger_1e1mu && isTriggered_2mu ) {
+	continue;
+      }
+    }
+    cutFlowTable_2lss_1tau.update("trigger");
+
+    if ( (selTrigger_2mu   && !apply_offline_e_trigger_cuts_2mu)   ||
+	 (selTrigger_1mu   && !apply_offline_e_trigger_cuts_1mu)   ||
+	 (selTrigger_2e    && !apply_offline_e_trigger_cuts_2e)    ||
+	 (selTrigger_1e1mu && !apply_offline_e_trigger_cuts_1e1mu) ||
+	 (selTrigger_1e    && !apply_offline_e_trigger_cuts_1e)    ) {
+      fakeableElectronSelector.disable_offline_e_trigger_cuts();
+      tightElectronSelector.disable_offline_e_trigger_cuts();
+    } else {
+      fakeableElectronSelector.enable_offline_e_trigger_cuts();
+      tightElectronSelector.enable_offline_e_trigger_cuts();
+    }
+		
+		
 //--- apply preselection
     std::vector<const RecoLepton*> preselLeptons = mergeLeptonCollections(preselElectrons, preselMuons, isHigherConePt);
     // require at least two leptons passing loose preselection criteria
@@ -772,6 +791,7 @@ int main(int argc, char* argv[])
       lheInfoReader->read();
     }
 
+
 //--- compute event-level weight for data/MC correction of b-tagging efficiency and mistag rate
 //   (using the method "Event reweighting using scale factors calculated with a tag and probe method",
 //    described on the BTV POG twiki https://twiki.cern.ch/twiki/bin/view/CMS/BTagShapeCalibration )
@@ -829,6 +849,7 @@ int main(int argc, char* argv[])
 
       evtWeight *= weight_data_to_MC_correction;
     }
+		
 
     // require exactly two leptons passing tight selection criteria, to avoid overlap with other channels
     std::vector<const RecoLepton*> tightLeptons = mergeLeptonCollections(tightElectrons, tightMuons, isHigherPt);
@@ -947,6 +968,14 @@ int main(int argc, char* argv[])
     if ( selEventsFile ) {
       (*selEventsFile) << eventInfo.run << ':' << eventInfo.lumi << ':' << eventInfo.event << '\n';
     }
+		
+#else
+#pragma message ("Warning***   2lss_1tau selection conditions will not be executed ")
+
+		double evtWeight = 1.;
+#endif
+
+
 
 //--- build collections of generator level particles
     std::vector<GenParticle> genTopQuarks = genTopQuarkReader->read();
@@ -960,6 +989,7 @@ int main(int argc, char* argv[])
       dumpGenParticles("genWBoson", genWBosons);
       dumpGenParticles("genWJet", genWJets);
     }
+
 
     if ( !(genTopQuarks.size() == 2) ) {
       if ( isDEBUG ) std::cout << "FAILS '2 genTopQuarks' cut !!" << std::endl;
@@ -1225,6 +1255,7 @@ int main(int argc, char* argv[])
       genAntiTopP4 = genBJetFromAntiTop->p4() + genWJetFromAntiTop_lead->p4() + genWJetFromAntiTop_sublead->p4();
     }
 
+		
     //-------------------------------------------------------------------------------------------------------------------
     // case 1: all three jets contained within dR=1.5 "fat" jet,
     //         reconstructed by hep-top-tagger (HTTv2) algorithm
@@ -1380,13 +1411,13 @@ int main(int argc, char* argv[])
 		  isHTTv2FromTop = true;
 		  if ( recTop->pt() > 200 ) {
 		    isHTTv2FromTop_fatjetPtGt200 = true;
-		    if ( recTop->subJet1()->pt() && recTop->subJet2()->pt() && recTop->subJet3()->pt() ) {
+		    if ( recTop->subJet1()->pt() > 30 && recTop->subJet2()->pt() > 30 && recTop->subJet3()->pt() > 30 ) {
 		      isHTTv2FromTop_fatjetPtGt200_and_subjetPtGt30 = true;
 		      if ( jetSelectorHTTv2(*recTop) ) {
-			std::cout << "found boosted hadronic top:" 
+						/*std::cout << "found boosted hadronic top:" 
 				  << " run = " << eventInfo.run << ", ls = " << eventInfo.lumi << ", event = " << eventInfo.event << std::endl;
 			std::cout << "HTTv2 jet:" << std::endl;
-			std::cout << (*recTop);
+			std::cout << (*recTop);*/
 			isHTTv2FromTop_selected = true;
 		      }
 		    }
@@ -1486,13 +1517,13 @@ int main(int argc, char* argv[])
 		  isHTTv2FromAntiTop = true;
 		  if ( recAntiTop->pt() > 200 ) {
 		    isHTTv2FromAntiTop_fatjetPtGt200 = true;
-		    if ( recAntiTop->subJet1()->pt() && recAntiTop->subJet2()->pt() && recAntiTop->subJet3()->pt() ) {
+		    if ( recAntiTop->subJet1()->pt() > 30 && recAntiTop->subJet2()->pt() > 30 && recAntiTop->subJet3()->pt() > 30 ) {
 		      isHTTv2FromAntiTop_fatjetPtGt200_and_subjetPtGt30 = true;
 		      if ( jetSelectorHTTv2(*recAntiTop) ) {
-			std::cout << "found boosted hadronic anti-top:" 
+						/*std::cout << "found boosted hadronic anti-top:" 
 				  << " run = " << eventInfo.run << ", ls = " << eventInfo.lumi << ", event = " << eventInfo.event << std::endl;
 			std::cout << "HTTv2 jet:" << std::endl;
-			std::cout << (*recAntiTop);
+			std::cout << (*recAntiTop);*/
 			isHTTv2FromAntiTop_selected = true;
 		      }
 		    }
@@ -1521,7 +1552,7 @@ int main(int argc, char* argv[])
       }
     }
     //-------------------------------------------------------------------------------------------------------------------
-
+		
     //-------------------------------------------------------------------------------------------------------------------
     // case 2: two jets from hadronic W boson decay contained within dR=1.2 "fat" jet,
     //         reconstructed by by anti-kT algorithm with dR=1.2 (AK12),
@@ -1689,12 +1720,12 @@ int main(int argc, char* argv[])
 		      isAK12FromTop_fatjetPtGt130_and_subjetPtGt10 = true;
 		      if ( jetSelectorAK12(*recWBosonFromTop) ) {
 			if ( selBJetFromTop ) {
-			  std::cout << "found semi-boosted hadronic top:" 
+			  /*std::cout << "found semi-boosted hadronic top:" 
 				    << " run = " << eventInfo.run << ", ls = " << eventInfo.lumi << ", event = " << eventInfo.event << std::endl;
 			  std::cout << "AK12 jet:" << std::endl;
 			  std::cout << (*recWBosonFromTop);
 			  std::cout << "b-jet:" << std::endl;
-			  std::cout << (*selBJetFromTop);
+			  std::cout << (*selBJetFromTop);*/
 			}
 			isAK12FromTop_selected = true;
 		      }
@@ -1756,12 +1787,12 @@ int main(int argc, char* argv[])
 		      isAK12FromAntiTop_fatjetPtGt130_and_subjetPtGt10 = true;
 		      if ( jetSelectorAK12(*recWBosonFromAntiTop) ) {
 			if ( selBJetFromAntiTop ) {
-			  std::cout << "found semi-boosted hadronic anti-top:" 
+			  /*std::cout << "found semi-boosted hadronic anti-top:" 
 				    << " run = " << eventInfo.run << ", ls = " << eventInfo.lumi << ", event = " << eventInfo.event << std::endl;
 			  std::cout << "AK12 jet:" << std::endl;
 			  std::cout << (*recWBosonFromAntiTop);
 			  std::cout << "b-jet:" << std::endl;
-			  std::cout << (*selBJetFromAntiTop);
+			  std::cout << (*selBJetFromAntiTop);*/
 			}
 			isAK12FromAntiTop_selected = true;
 		      }
@@ -1845,6 +1876,7 @@ int main(int argc, char* argv[])
 		  genWJetFromAntiTop_sublead && genWJetFromAntiTop_lead->absEta() < 2.4) ) {
 	      cutFlowTable_2lss_1tau_resolved.update("genJet triplet passes abs(eta) < 2.4");
 
+				
 	      if ( genTopQuark && genWBosonFromTop && genBJetFromTop && genWJetFromTop_lead && genWJetFromTop_sublead ) {
 		fillWithOverFlow(histogram_ptTop, genTopQuark->pt(), evtWeight);
 		fillWithOverFlow(histogram_etaTop, genTopQuark->eta(), evtWeight);
@@ -1884,6 +1916,7 @@ int main(int argc, char* argv[])
 		fillWithOverFlow(histogram_etaB, genBJetFromAntiTop->eta(), evtWeight);
 	      }
 
+
 	      if ( (genBJetFromTop                                                                &&
 		    genWJetFromTop_lead                                                           &&
 		    genWJetFromTop_sublead                                                        &&
@@ -1898,6 +1931,7 @@ int main(int argc, char* argv[])
 		    deltaR(genWJetFromAntiTop_lead->p4(), genWJetFromAntiTop_sublead->p4()) > 0.4) ) {
 		cutFlowTable_2lss_1tau_resolved.update("dR(jet1,jet2) > 0.4 for any pair of genJets in triplet");
 
+		
 		const RecoJet* selBJetFromTop = 0;
 		double dRmin_selBJetFromTop = 1.e+3;
 		const RecoJet* selWJetFromTop_lead = 0;
@@ -1954,6 +1988,8 @@ int main(int argc, char* argv[])
 		    }
 		  }
 		}
+
+
 		if ( (selBJetFromTop             &&
 		      selWJetFromTop_lead        &&
 		      selWJetFromTop_sublead    ) ||
@@ -1976,7 +2012,8 @@ int main(int argc, char* argv[])
 			deltaR(selWJetFromAntiTop_lead->p4(), selWJetFromAntiTop_sublead->p4()) > 0.3) ) {
 		    cutFlowTable_2lss_1tau_resolved.update("dR(jet1,jet2) > 0.3 for any pair of selJets in triplet");
 
-		    if ( selWJetFromTop_lead && selWJetFromTop_sublead ) {
+		    if ( selWJetFromTop_lead && selWJetFromTop_sublead && 1==0) {
+					std::cout<<"here75"<<std::endl;
 		      double cosThetaStar_WJet1 = comp_cosThetaStar(selWJetFromTop_lead->p4(), selWJetFromTop_lead->p4() + selWJetFromTop_sublead->p4());
 		      fillWithOverFlow(histogram_resolved_WJet1_cosThetaStar, cosThetaStar_WJet1, evtWeight);
 		      double cosThetaStar_BJet = comp_cosThetaStar(selBJetFromTop->p4(), selBJetFromTop->p4() + selWJetFromTop_lead->p4() + selWJetFromTop_sublead->p4());
@@ -1990,7 +2027,7 @@ int main(int argc, char* argv[])
 			selWJetFromTop_lead->p4());
 		      fillWithOverFlow(histogram_resolved_theta_t_sublead, theta_t_sublead, evtWeight);
 		    }
-		    if ( selWJetFromAntiTop_lead && selWJetFromAntiTop_sublead ) {
+		    if ( selWJetFromAntiTop_lead && selWJetFromAntiTop_sublead && 1==0) {
 		      double cosThetaStar_WJet1 = comp_cosThetaStar(selWJetFromAntiTop_lead->p4(), selWJetFromAntiTop_lead->p4() + selWJetFromAntiTop_sublead->p4());
 		      fillWithOverFlow(histogram_resolved_WJet1_cosThetaStar, cosThetaStar_WJet1, evtWeight);
 		      double cosThetaStar_BJet = comp_cosThetaStar(selBJetFromAntiTop->p4(), selBJetFromAntiTop->p4() + selWJetFromAntiTop_lead->p4() + selWJetFromAntiTop_sublead->p4());
@@ -2018,7 +2055,7 @@ int main(int argc, char* argv[])
 		    }
 		    if ( selBJetFromTop_passesLoose || selBJetFromAntiTop_passesLoose ) {
 		      cutFlowTable_2lss_1tau_resolved.update(">= 1 selBJet passes loose b-tagging working-point");
-		      if ( selWJetFromTop_lead && selWJetFromTop_sublead && selBJetFromTop_passesLoose ) {
+		      /*if ( selWJetFromTop_lead && selWJetFromTop_sublead && selBJetFromTop_passesLoose ) {
 			std::cout << "found resolved hadronic top:";
 		      }
 		      if ( selBJetFromAntiTop_passesLoose && selWJetFromAntiTop_lead && selWJetFromAntiTop_sublead ) {
@@ -2033,7 +2070,7 @@ int main(int argc, char* argv[])
 		      if ( selWJetFromAntiTop_sublead ) std::cout << (*selWJetFromAntiTop_sublead);
 		      std::cout << "b-jet:" << std::endl;
 		      if ( selBJetFromTop     ) std::cout << (*selBJetFromTop);
-		      if ( selBJetFromAntiTop ) std::cout << (*selBJetFromAntiTop);
+		      if ( selBJetFromAntiTop ) std::cout << (*selBJetFromAntiTop);*/
 		      isResolved = true;
 		    }
 		  }
@@ -2044,6 +2081,8 @@ int main(int argc, char* argv[])
 	}
       }
     }
+
+
 
     if ( isResolved ) {
       cutFlowTable_2lss_1tau_resolved.update("rec resolved");
@@ -2056,9 +2095,12 @@ int main(int argc, char* argv[])
 	  cutFlowTable_2lss_1tau_resolved.update("!HTTv2 && !AK12");
 	}
       }
+			if ( !((isAK12FromTop_selected && isBJetFromTop) || (isAK12FromAntiTop_selected && isBJetFromAntiTop)) ) {
+				cutFlowTable_2lss_1tau_resolved.update("!AK12");
+			}
     }
     //-------------------------------------------------------------------------------------------------------------------
-
+		
     ++selectedEntries;
     selectedEntries_weighted += evtWeight;
     histogram_selectedEntries->Fill(0.);
