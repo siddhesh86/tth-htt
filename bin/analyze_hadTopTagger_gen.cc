@@ -1305,6 +1305,10 @@ int main(int argc, char* argv[])
 		  deltaR(genAntiTopP4, genWJetFromAntiTop_sublead->p4())                < 1.5) ) {
 	      cutFlowTable_2lss_1tau_HTTv2.update("dR(genBJet, genWJet1, genWJet2) < 1.5");
 
+				if (jet_ptrsHTTv2.size() >= 1) {
+					cutFlowTable_2lss_1tau_HTTv2.update("HTTv2: jet_ptrsHTTv2.size() >= 1");
+				}
+				
 	      const RecoJetHTTv2* recTop = 0;
 	      const RecoJetHTTv2* recAntiTop = 0;
 	      for ( std::vector<const RecoJetHTTv2*>::const_iterator jetHTTv2 = jet_ptrsHTTv2.begin();
