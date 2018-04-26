@@ -361,6 +361,7 @@ int main(int argc, char* argv[])
     std::vector<RecoJet> jets = jetReader->read();
     std::vector<const RecoJet*> selJetsraw = convert_to_ptrs(jets);
     std::vector<const RecoJet*> selJets = jetSelector(selJetsraw, isHigherPt);
+		//selJets = convert_to_ptrs(jets);
     std::vector<const RecoJet*> selBJets_loose = jetSelectorBtagLoose(selJets);
     std::vector<const RecoJet*> selBJets_medium = jetSelectorBtagMedium(selJets);
     //std::cout << "after load jets"  << std::endl;
@@ -369,16 +370,21 @@ int main(int argc, char* argv[])
     std::vector<const RecoJetHTTv2*> jet_ptrsHTTv2raw = convert_to_ptrs(jetsHTTv2);
     std::vector<const RecoJetHTTv2*> jet_ptrsHTTv2 =  jetSelectorHTTv2(jet_ptrsHTTv2raw, isHigherPt);
     //std::cout << "after load HTT"  << std::endl;
+		//jet_ptrsHTTv2 = convert_to_ptrs(jetsHTTv2);
 //--- build collections of jets reconstructed by anti-kT algorithm with dR=1.2 (AK12)
     std::vector<RecoJetAK12> jetsAK12 = jetReaderAK12->read();
     std::vector<const RecoJetAK12*> jet_ptrsAK12raw = convert_to_ptrs(jetsAK12);
     std::vector<const RecoJetAK12*> jet_ptrsAK12 = jetSelectorAK12(jet_ptrsAK12raw, isHigherPt);
+		//jet_ptrsAK12 = convert_to_ptrs(jetsAK12);
     //std::cout << "after load ak12"  << std::endl;
 //--- build collections of jets reconstructed by anti-kT algorithm with dR=0.8 (AK8)
     std::vector<RecoJetAK8> jetsAK8 = jetReaderAK8->read();
     std::vector<const RecoJetAK8*> jet_ptrsAK8raw = convert_to_ptrs(jetsAK8);
     std::vector<const RecoJetAK8*> jet_ptrsAK8 = jetSelectorAK8(jet_ptrsAK8raw , isHigherPt);
     //std::cout << "after load ak8"  << std::endl;
+
+		
+		
 //--- build collections of generator level particles (after some cuts are applied, to safe computing time)
     std::vector<GenJet> genJets;
     if ( isMC && redoGenMatching ) {
@@ -702,7 +708,8 @@ int main(int argc, char* argv[])
 
 					if (jet_ptrsHTTv2.size() >= 1) cutFlowTable_ttH_HTTv2.update("HTTv2: jet_ptrsHTTv2.size() >= 1");
 
-					int nGenMatchedHTTv2 = 0; 
+					int nGenMatchedHTTv2 = 0;
+					int nGenMatchedHTTv2_1 = 0; 
 					typeTop = 1;
 					//const RecoJetHTTv2 *recTop = 0;
 					for ( std::vector<const RecoJetHTTv2*>::const_iterator jetIter = jet_ptrsHTTv2.begin();
@@ -710,7 +717,7 @@ int main(int argc, char* argv[])
 
 						//recTop = (*jetIter);
 						if (!((*jetIter)->pt() > 200)) continue;
-						if (!((*jetIter)->subJet1()->pt() && (*jetIter)->subJet2()->pt() && (*jetIter)->subJet3()->pt() )) continue;
+						if (!((*jetIter)->subJet1()->pt() > 30 && (*jetIter)->subJet2()->pt() > 30 && (*jetIter)->subJet3()->pt() > 30)) continue;
 						//if (!( jetSelectorHTTv2_1(*recTop) )) continue;
 						if (!( jetSelectorHTTv2_1(**jetIter) )) continue;
 						
@@ -720,26 +727,41 @@ int main(int argc, char* argv[])
 						recSubJet[0] = (*jetIter)->subJet1();
 						recSubJet[1] = (*jetIter)->subJet2();
 						recSubJet[2] = (*jetIter)->subJet3();
+
+						/*
 						std::vector<double> btag_disc = {recSubJet[0]->BtagCSV(), recSubJet[1]->BtagCSV(), recSubJet[2]->BtagCSV()};
 						auto btag_order = sort_indexes(btag_disc);
 						selBJet = recSubJet[btag_order[0]]->p4();
 						selWJet1 = recSubJet[btag_order[1]]->p4();
 						selWJet2 = recSubJet[btag_order[2]]->p4();
+						*/
 
-						std::map<int, bool> genMatchingTop = isGenMatchedJetTriplet(selBJet, selWJet1, selWJet2, genTopQuarks, genBJets, genWBosons, genWJets, kGenTop, genTopPtProbeTop, typeTop, unfittedHadTopP4);
-						std::map<int, bool> genMatchingAntiTop = isGenMatchedJetTriplet(selBJet, selWJet1,  selWJet2, genTopQuarks, genBJets, genWBosons, genWJets, kGenAntiTop, genTopPtProbeAntiTop, typeTop, unfittedHadTopP4);
-						if(genMatchingTop[kGenMatchedTriplet]) genTopPt=genTopPtProbeTop;
-						if(genMatchingAntiTop[kGenMatchedTriplet]) genTopPt=genTopPtProbeAntiTop;
-						isGenMatched = (genMatchingTop[kGenMatchedTriplet] || genMatchingAntiTop[kGenMatchedTriplet]);
-						fatjet_isGenMatched = (genMatchingTop[kGenMatchedFatJet] || genMatchingAntiTop[kGenMatchedFatJet]);
-						b_isGenMatched = (genMatchingTop[kGenMatchedBJet] || genMatchingAntiTop[kGenMatchedBJet]);
-						
-						if (isGenMatched) nGenMatchedHTTv2++;
+						int perm [5] = { 0, 1, 2, 0, 1 }; // I do not care about the ordering of wj1/2 so no fancy permutation solution is required
+
+						for (int ii = 0; ii < 3; ii++) {
+              selBJet = recSubJet[perm[ii]]->p4();
+              selWJet1 = recSubJet[perm[ii+1]]->p4();
+              selWJet2 = recSubJet[perm[ii+2]]->p4();
+							
+							std::map<int, bool> genMatchingTop = isGenMatchedJetTriplet(selBJet, selWJet1, selWJet2, genTopQuarks, genBJets, genWBosons, genWJets, kGenTop, genTopPtProbeTop, typeTop, unfittedHadTopP4);
+							std::map<int, bool> genMatchingAntiTop = isGenMatchedJetTriplet(selBJet, selWJet1,  selWJet2, genTopQuarks, genBJets, genWBosons, genWJets, kGenAntiTop, genTopPtProbeAntiTop, typeTop, unfittedHadTopP4);
+							if(genMatchingTop[kGenMatchedTriplet]) genTopPt=genTopPtProbeTop;
+							if(genMatchingAntiTop[kGenMatchedTriplet]) genTopPt=genTopPtProbeAntiTop;
+							isGenMatched = (genMatchingTop[kGenMatchedTriplet] || genMatchingAntiTop[kGenMatchedTriplet]);
+							fatjet_isGenMatched = (genMatchingTop[kGenMatchedFatJet] || genMatchingAntiTop[kGenMatchedFatJet]);
+							b_isGenMatched = (genMatchingTop[kGenMatchedBJet] || genMatchingAntiTop[kGenMatchedBJet]);
+							
+							if (isGenMatched) nGenMatchedHTTv2++;
+							if (isGenMatched && fatjet_isGenMatched) nGenMatchedHTTv2_1++;
+						}
 					}
 					
 					if (nGenMatchedHTTv2 >= 1) {
 						isCategoryFatTopQuark = true;
 						cutFlowTable_ttH_HTTv2.update("HTTv2: nGenMatchedHTTv2 >= 1  ** Rec ttH signal");
+					}
+					if (nGenMatchedHTTv2_1 >= 1) {
+						cutFlowTable_ttH_HTTv2.update("HTTv2: nGenMatchedHTTv2_1 >= 1     ");
 					}
 				}
 			}
@@ -780,7 +802,7 @@ int main(int argc, char* argv[])
 					if (jet_ptrsAK12.size() >= 1 && selJets.size() >= 1) cutFlowTable_ttH_AK12.update("AK12: jet_ptrsAK12.size() >= 1 && selJets.size() >= 1");
 
 					int nGenMatchedAK12 = 0;
-					int nGenMatchedAK12_1 = 0;
+					int nGenMatchedAK12_1 = 
 					typeTop = 2; 
 					for ( std::vector<const RecoJetAK12*>::const_iterator jetIter = jet_ptrsAK12.begin();
 								jetIter != jet_ptrsAK12.end(); ++jetIter ) {
@@ -865,6 +887,7 @@ int main(int argc, char* argv[])
 
 					int nGenMatchedAK4   = 0;
 					int nGenMatchedAK4_1 = 0;
+					/*
 					for ( unsigned int bjetCandidate = 0; bjetCandidate < selJets.size(); bjetCandidate++ )  {
             for ( std::vector<const RecoJet*>::const_iterator selWJet1Candidate = selJets.begin();
 									selWJet1Candidate != selJets.end(); ++selWJet1Candidate ) {
@@ -876,6 +899,20 @@ int main(int argc, char* argv[])
 								selBJet = (*selJets[bjetCandidate]).p4();
 								selWJet1 = (*selWJet1Candidate)->p4();
 								selWJet2 = (*selWJet2Candidate)->p4();
+								*/
+					for ( std::vector<const RecoJet*>::const_iterator selBjetCandidate = selJets.begin();
+								 selBjetCandidate != selJets.end(); ++selBjetCandidate ) {
+						for ( std::vector<const RecoJet*>::const_iterator selWJet1Candidate = selJets.begin();
+									selWJet1Candidate != selJets.end(); ++selWJet1Candidate ) {
+							if ( (*selWJet1Candidate)->pt() == (*selBjetCandidate)->pt() ) continue;
+							for ( std::vector<const RecoJet*>::const_iterator selWJet2Candidate = selJets.begin();
+										selWJet2Candidate != selJets.end(); ++selWJet2Candidate ) {
+								if ( (*selWJet2Candidate)->pt() == (*selBjetCandidate)->pt()  ) continue;
+								if ( (*selWJet2Candidate)->pt() == (*selWJet1Candidate)->pt() ) continue;
+								selBJet  = (*selBjetCandidate)->p4();
+								selWJet1 = (*selWJet1Candidate)->p4();
+								selWJet2 = (*selWJet2Candidate)->p4();
+								
 								// calculate gen matching
 								std::map<int, bool> genMatchingTop = isGenMatchedJetTriplet(selBJet, selWJet1, selWJet2, genTopQuarks, genBJets, genWBosons, genWJets, kGenTop, genTopPtProbeTop);
 								std::map<int, bool> genMatchingAntiTop = isGenMatchedJetTriplet(selBJet, selWJet1,  selWJet2, genTopQuarks, genBJets, genWBosons, genWJets, kGenAntiTop, genTopPtProbeAntiTop);
